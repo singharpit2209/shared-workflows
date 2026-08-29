@@ -1,0 +1,29 @@
+# Example: manual apply with GitHub Environment approval.
+#
+# Copy to core-iac/.github/workflows/terraform-apply.yml.
+# Configure a "dev" Environment in GitHub with required reviewers (yourself).
+
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      working_directory:
+        description: Terraform root module path
+        required: true
+        default: core/dev/dns
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    uses: singharpit2209/shared-workflows/.github/workflows/terraform.yml@main
+    with:
+      operation: apply
+      working_directory: ${{ inputs.working_directory }}
+      aws_role_arn: ${{ vars.AWS_ROLE_ARN }}
+      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      environment: dev

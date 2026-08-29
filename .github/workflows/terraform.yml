@@ -1,0 +1,137 @@
+# Reusable Terraform plan / apply workflow (OIDC, no AWS keys).
+#
+# Call with operation=plan on pull requests.
+# Call with operation=apply via workflow_dispatch (uses saved plan from the same run).
+#
+# Action SHAs: update periodically — https://github.com/actions/checkout/releases
+
+name: Terraform
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        description: plan or apply
+        required: true
+        type: string
+      working_directory:
+        description: Path to the Terraform root module in the caller repo
+        required: true
+        type: string
+      aws_role_arn:
+        description: IAM role ARN for this repository (vars.AWS_ROLE_ARN in caller)
+        required: true
+        type: string
+      aws_region:
+        description: AWS region
+        required: false
+        type: string
+        default: us-east-1
+      environment:
+        description: GitHub Environment name (used for apply approval gates)
+        required: false
+        type: string
+        default: dev
+      terraform_version:
+        description: Terraform CLI version (>= 1.10 for S3 native locking)
+        required: false
+        type: string
+        default: 1.10.5
+      artifact_retention_days:
+        description: Days to retain plan artifacts
+        required: false
+        type: number
+        default: 5
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    name: Plan (${{ inputs.working_directory }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be0584771c9fb8739d # v4.2.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429591924e940be3d9049fae2566283afe # v4.0.2
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: gha-terraform-plan
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@633666f98eab0cd7598440a2841795017287f525 # v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
+        working-directory: ${{ github.workspace }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: |
+          terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            exit ${PIPESTATUS[0]}
+          fi
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@50769540e7f4bd9e85f9ee05e5b7a2638f144334 # v4.6.0
+        with:
+          name: terraform-plan-${{ inputs.environment }}-${{ github.run_id }}
+          path: |
+            ${{ inputs.working_directory }}/tfplan
+            ${{ inputs.working_directory }}/plan.txt
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  apply:
+    name: Apply (${{ inputs.working_directory }})
+    needs: plan
+    if: inputs.operation == 'apply'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be0584771c9fb8739d # v4.2.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429591924e940be3d9049fae2566283afe # v4.0.2
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: gha-terraform-apply
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@633666f98eab0cd7598440a2841795017287f525 # v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@fa0a036b4a8a58b658419ce2a2b6a2e1657a2d7f # v4.1.8
+        with:
+          name: terraform-plan-${{ inputs.environment }}-${{ github.run_id }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply saved plan
+        run: terraform apply -input=false -refresh=false -no-color tfplan

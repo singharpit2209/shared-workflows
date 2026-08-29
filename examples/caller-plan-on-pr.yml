@@ -1,0 +1,27 @@
+# Example: run Terraform plan on pull requests that touch core/dev/dns.
+#
+# Copy to core-iac/.github/workflows/terraform-plan.yml and adjust paths.
+# Requires repo variables: AWS_ROLE_ARN, AWS_REGION (optional, defaults in workflow).
+
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "core/dev/dns/**"
+      - ".github/workflows/terraform-plan.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    uses: singharpit2209/shared-workflows/.github/workflows/terraform.yml@main
+    with:
+      operation: plan
+      working_directory: core/dev/dns
+      aws_role_arn: ${{ vars.AWS_ROLE_ARN }}
+      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      environment: dev

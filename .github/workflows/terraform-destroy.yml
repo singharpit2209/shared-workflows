@@ -1,0 +1,85 @@
+# Reusable Terraform destroy workflow — disabled unless explicitly confirmed.
+#
+# Call only via workflow_dispatch from a consumer repo.
+# Requires GitHub Environment approval (configure in repo Settings → Environments).
+
+name: Terraform Destroy
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: Path to the Terraform root module in the caller repo
+        required: true
+        type: string
+      aws_role_arn:
+        description: IAM role ARN for this repository
+        required: true
+        type: string
+      aws_region:
+        description: AWS region
+        required: false
+        type: string
+        default: us-east-1
+      environment:
+        description: GitHub Environment name (approval gate)
+        required: false
+        type: string
+        default: dev
+      terraform_version:
+        description: Terraform CLI version
+        required: false
+        type: string
+        default: 1.10.5
+      confirmation:
+        description: Must be exactly "destroy" to proceed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  destroy:
+    name: Destroy (${{ inputs.working_directory }})
+    if: inputs.confirmation == 'destroy'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be0584771c9fb8739d # v4.2.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429591924e940be3d9049fae2566283afe # v4.0.2
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: gha-terraform-destroy
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@633666f98eab0cd7598440a2841795017287f525 # v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform destroy
+        run: terraform destroy -input=false -auto-approve -no-color
+
+  blocked:
+    name: Destroy blocked
+    if: inputs.confirmation != 'destroy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse to destroy
+        run: |
+          echo "Destroy was not confirmed."
+          echo 'Set confirmation input to exactly: destroy'
+          exit 1
