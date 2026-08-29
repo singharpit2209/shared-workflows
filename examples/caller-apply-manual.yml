@@ -1,7 +1,4 @@
-# Example: manual apply with GitHub Environment approval.
-#
-# Copy to core-iac/.github/workflows/terraform-apply.yml.
-# Configure a "dev" Environment in GitHub with required reviewers (yourself).
+# Example: manual apply — plan and apply jobs both configure OIDC in the caller repo.
 
 name: Terraform Apply
 
@@ -9,8 +6,6 @@ on:
   workflow_dispatch:
     inputs:
       working_directory:
-        description: Terraform root module path
-        required: true
         default: core/dev/dns
         type: string
 
@@ -19,11 +14,36 @@ permissions:
   id-token: write
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          audience: sts.amazonaws.com
+
+      - uses: singharpit2209/shared-workflows/actions/terraform-plan@main
+        with:
+          working_directory: ${{ inputs.working_directory }}
+          artifact_name: terraform-plan-dev-${{ github.run_id }}
+
   apply:
-    uses: singharpit2209/shared-workflows/.github/workflows/terraform.yml@main
-    with:
-      operation: apply
-      working_directory: ${{ inputs.working_directory }}
-      aws_role_arn: ${{ vars.AWS_ROLE_ARN }}
-      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      environment: dev
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          audience: sts.amazonaws.com
+
+      - uses: singharpit2209/shared-workflows/actions/terraform-apply@main
+        with:
+          working_directory: ${{ inputs.working_directory }}
+          artifact_name: terraform-plan-dev-${{ github.run_id }}

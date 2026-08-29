@@ -1,0 +1,59 @@
+name: Terraform Plan
+description: Run terraform fmt, init, validate, and plan (AWS creds must already be configured in the caller job).
+
+inputs:
+  working_directory:
+    description: Path to the Terraform root module
+    required: true
+  terraform_version:
+    description: Terraform CLI version
+    required: false
+    default: 1.10.5
+  artifact_name:
+    description: Name for the uploaded plan artifact
+    required: true
+  artifact_retention_days:
+    description: Days to retain the plan artifact
+    required: false
+    default: "5"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Terraform format check
+      shell: bash
+      run: terraform fmt -check -recursive
+      working-directory: ${{ github.workspace }}
+
+    - name: Terraform init
+      shell: bash
+      run: terraform init -input=false
+      working-directory: ${{ inputs.working_directory }}
+
+    - name: Terraform validate
+      shell: bash
+      run: terraform validate
+      working-directory: ${{ inputs.working_directory }}
+
+    - name: Terraform plan
+      shell: bash
+      run: |
+        terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          exit ${PIPESTATUS[0]}
+        fi
+      working-directory: ${{ inputs.working_directory }}
+
+    - name: Upload plan artifact
+      uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          ${{ inputs.working_directory }}/tfplan
+          ${{ inputs.working_directory }}/plan.txt
+        retention-days: ${{ inputs.artifact_retention_days }}

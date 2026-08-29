@@ -6,10 +6,13 @@ No AWS credentials are stored here. Callers pass an OIDC IAM role ARN from Layer
 
 ## Workflows
 
-| Workflow | File | Purpose |
+| Component | Path | Purpose |
 |---|---|---|
-| Terraform plan/apply | [`.github/workflows/terraform.yml`](.github/workflows/terraform.yml) | Plan on PR; apply saved plan with approval |
-| Terraform destroy | [`.github/workflows/terraform-destroy.yml`](.github/workflows/terraform-destroy.yml) | Destroy only when `confirmation=destroy` |
+| Composite plan action | [`actions/terraform-plan/`](actions/terraform-plan/) | fmt, init, validate, plan, upload artifact |
+| Composite apply action | [`actions/terraform-apply/`](actions/terraform-apply/) | download artifact, apply saved plan |
+| Legacy reusable workflows | [`.github/workflows/terraform.yml`](.github/workflows/terraform.yml) | Deprecated — OIDC must run in caller repo |
+
+**Important:** Configure AWS OIDC credentials in the **caller repository workflow**, not inside a reusable workflow. IAM trust policies allow `singharpit2209/roles-iac`, not `shared-workflows`.
 
 ## How it works
 
@@ -84,15 +87,21 @@ Copy examples from [`examples/`](examples/) into the consumer repo under `.githu
 Minimal caller snippet:
 
 ```yaml
-jobs:
-  plan:
-    uses: singharpit2209/shared-workflows/.github/workflows/terraform.yml@main
+permissions:
+  contents: read
+  id-token: write
+
+steps:
+  - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+  - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
     with:
-      operation: plan
+      role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+      aws-region: us-east-1
+      audience: sts.amazonaws.com
+  - uses: singharpit2209/shared-workflows/actions/terraform-plan@main
+    with:
       working_directory: core/dev/dns
-      aws_role_arn: ${{ vars.AWS_ROLE_ARN }}
-      aws_region: us-east-1
-      environment: dev
+      artifact_name: terraform-plan-dev-${{ github.run_id }}
 ```
 
 ## Inputs reference (`terraform.yml`)
