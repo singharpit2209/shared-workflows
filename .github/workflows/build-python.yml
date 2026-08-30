@@ -83,7 +83,7 @@ jobs:
           path: ${{ inputs.working_directory }}/${{ steps.meta.outputs.artifact_name }}
           retention-days: 30
 
-      - uses: ./actions/create-artifact-manifest
+      - uses: singharpit2209/shared-workflows/actions/create-artifact-manifest@v0.2.1
         with:
           artifact_version: ${{ steps.meta.outputs.artifact_version }}
           artifact_name: ${{ steps.meta.outputs.artifact_name }}
