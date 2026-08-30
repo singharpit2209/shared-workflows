@@ -1,13 +1,18 @@
-# Example: manual apply — plan and apply jobs both configure OIDC in the caller repo.
+# Example: manual apply with component + environment inputs (core-iac pattern).
 
 name: Terraform Apply
 
 on:
   workflow_dispatch:
     inputs:
-      working_directory:
-        default: core/dev/dns
-        type: string
+      component:
+        default: kms
+        type: choice
+        options: [kms, vpc, dns, alarms]
+      environment:
+        default: dev
+        type: choice
+        options: [dev, test, prod]
 
 permissions:
   contents: read
@@ -27,13 +32,15 @@ jobs:
 
       - uses: singharpit2209/shared-workflows/actions/terraform-plan@main
         with:
-          working_directory: ${{ inputs.working_directory }}
-          artifact_name: terraform-plan-dev-${{ github.run_id }}
+          working_directory: tf/${{ inputs.component }}
+          var_file: account/${{ inputs.environment }}/terraform.tfvars
+          backend_config: account/${{ inputs.environment }}/backend.hcl
+          artifact_name: terraform-plan-${{ inputs.environment }}-${{ inputs.component }}-${{ github.run_id }}
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -45,5 +52,6 @@ jobs:
 
       - uses: singharpit2209/shared-workflows/actions/terraform-apply@main
         with:
-          working_directory: ${{ inputs.working_directory }}
-          artifact_name: terraform-plan-dev-${{ github.run_id }}
+          working_directory: tf/${{ inputs.component }}
+          backend_config: account/${{ inputs.environment }}/backend.hcl
+          artifact_name: terraform-plan-${{ inputs.environment }}-${{ inputs.component }}-${{ github.run_id }}

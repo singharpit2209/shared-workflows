@@ -25,7 +25,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
           audience: sts.amazonaws.com
 
-      - uses: singharpit2209/shared-workflows/actions/terraform-plan@main
-        with:
-          working_directory: core/dev/dns
-          artifact_name: terraform-plan-dev-${{ github.run_id }}
+  - uses: singharpit2209/shared-workflows/actions/terraform-plan@main
+    with:
+      working_directory: tf/kms
+      var_file: account/dev/terraform.tfvars
+      backend_config: account/dev/backend.hcl
+      artifact_name: terraform-plan-dev-kms-${{ github.run_id }}

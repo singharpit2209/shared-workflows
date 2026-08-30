@@ -5,17 +5,25 @@ inputs:
   working_directory:
     description: Path to the Terraform root module
     required: true
+  artifact_name:
+    description: Name for the uploaded plan artifact
+    required: true
   terraform_version:
     description: Terraform CLI version
     required: false
     default: 1.10.5
-  artifact_name:
-    description: Name for the uploaded plan artifact
-    required: true
   artifact_retention_days:
     description: Days to retain the plan artifact
     required: false
     default: "5"
+  var_file:
+    description: Optional path to terraform.tfvars (relative to working_directory)
+    required: false
+    default: ""
+  backend_config:
+    description: Optional backend config file (relative to working_directory)
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -32,7 +40,13 @@ runs:
 
     - name: Terraform init
       shell: bash
-      run: terraform init -input=false
+      run: |
+        set -euo pipefail
+        args=(-input=false)
+        if [ -n "${{ inputs.backend_config }}" ]; then
+          args+=(-backend-config="${{ inputs.backend_config }}")
+        fi
+        terraform init "${args[@]}"
       working-directory: ${{ inputs.working_directory }}
 
     - name: Terraform validate
@@ -43,7 +57,12 @@ runs:
     - name: Terraform plan
       shell: bash
       run: |
-        terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+        set -euo pipefail
+        args=(-input=false -no-color -out=tfplan)
+        if [ -n "${{ inputs.var_file }}" ]; then
+          args=(-var-file="${{ inputs.var_file }}" "${args[@]}")
+        fi
+        terraform plan "${args[@]}" 2>&1 | tee plan.txt
         if [ ${PIPESTATUS[0]} -ne 0 ]; then
           exit ${PIPESTATUS[0]}
         fi

@@ -115,6 +115,8 @@ steps:
 | `environment` | no | `dev` | GitHub Environment for apply approval |
 | `terraform_version` | no | `1.10.5` | Terraform CLI version |
 | `artifact_retention_days` | no | `5` | Plan artifact retention |
+| `var_file` | no | — | Path to tfvars relative to working_directory |
+| `backend_config` | no | — | Backend config file relative to working_directory |
 
 ## Security notes
 
