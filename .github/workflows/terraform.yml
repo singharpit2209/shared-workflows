@@ -129,6 +129,7 @@ jobs:
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: terraform-plan-${{ inputs.environment }}-${{ github.run_id }}
+          path: ${{ inputs.working_directory }}
 
       - name: Terraform init
         run: terraform init -input=false
