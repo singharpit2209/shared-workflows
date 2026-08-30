@@ -1,0 +1,25 @@
+name: Resolve deployment target
+description: Resolve AWS account, region, and deployment metadata from repository variables.
+
+outputs:
+  aws_region:
+    description: AWS region for deployment.
+    value: ${{ steps.resolve.outputs.aws_region }}
+  aws_account_id:
+    description: AWS account ID when configured.
+    value: ${{ steps.resolve.outputs.aws_account_id }}
+  project_name:
+    description: Project name prefix for resources.
+    value: ${{ steps.resolve.outputs.project_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve target
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "aws_region=${{ vars.AWS_REGION || 'us-east-1' }}" >> "$GITHUB_OUTPUT"
+        echo "aws_account_id=${{ vars.AWS_ACCOUNT_ID || '' }}" >> "$GITHUB_OUTPUT"
+        echo "project_name=${{ vars.PROJECT_NAME || 'singharpit2209-iac' }}" >> "$GITHUB_OUTPUT"

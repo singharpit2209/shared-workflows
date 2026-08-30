@@ -12,6 +12,18 @@ No AWS credentials are stored here. Callers pass an OIDC IAM role ARN from Layer
 | Composite apply action | [`actions/terraform-apply/`](actions/terraform-apply/) | download artifact, apply saved plan |
 | Legacy reusable workflows | [`.github/workflows/terraform.yml`](.github/workflows/terraform.yml) | Deprecated — OIDC must run in caller repo |
 
+### Application CI/CD (v0.2.0+)
+
+| Workflow | Purpose |
+|---|---|
+| [`build-python.yml`](.github/workflows/build-python.yml) | Test + zip Python Lambda |
+| [`build-node.yml`](.github/workflows/build-node.yml) | Test + zip Node Lambda |
+| [`build-java.yml`](.github/workflows/build-java.yml) | Maven test + shaded JAR |
+| [`deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) | Versioned artifact → Lambda `live` alias |
+| [`deploy-ecs.yml`](.github/workflows/deploy-ecs.yml) | Docker → ECR → ECS service update |
+
+Call from [`hello-world`](../hello-world/) app repo. Pin `@v0.2.0` after tagging this repo.
+
 **Important:** Configure AWS OIDC credentials in the **caller repository workflow**, not inside a reusable workflow. IAM trust policies allow `singharpit2209/roles-iac`, not `shared-workflows`.
 
 ## How it works
@@ -53,7 +65,7 @@ Public is recommended so consumer repos can call workflows without extra tokens.
 
 ### 2. Configure each consumer repo
 
-In `core-iac`, `application-iac`, and `roles-iac`, add **Repository variables**:
+In `core-iac`, `hello-world-iac`, and `roles-iac`, add **Repository variables**:
 
 | Variable | Value |
 |---|---|

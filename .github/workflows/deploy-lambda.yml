@@ -1,0 +1,105 @@
+name: Deploy Lambda
+
+on:
+  workflow_call:
+    inputs:
+      artifact_version:
+        description: Immutable artifact version from build workflow
+        required: true
+        type: string
+      artifact_name:
+        description: Artifact file name (zip or jar)
+        required: true
+        type: string
+      artifact_type:
+        description: zip or jar
+        required: true
+        type: string
+      build_artifact_name:
+        description: GitHub Actions artifact name from build workflow
+        required: true
+        type: string
+      lambda_function_name:
+        description: Target Lambda function name
+        required: true
+        type: string
+      artifact_bucket_name:
+        description: S3 bucket for versioned deployment artifacts
+        required: true
+        type: string
+      lambda_alias_name:
+        description: Alias to update after publish
+        required: false
+        type: string
+        default: "live"
+      environment:
+        description: Logical environment label
+        required: false
+        type: string
+        default: "dev"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: ./actions/validate-branch-environment
+        with:
+          environment: ${{ inputs.environment }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          audience: sts.amazonaws.com
+          role-session-name: gha-deploy-lambda
+
+      - name: Download build artifact
+        uses: actions/download-artifact@d3f86a1a25600553496ef675092678a179173279 # v4.1.7
+        with:
+          name: ${{ inputs.build_artifact_name }}
+          path: artifact
+
+      - name: Upload to S3 and update Lambda
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="artifact/${{ inputs.artifact_name }}"
+          if [ ! -f "$FILE" ]; then
+            FILE=$(find artifact -name "${{ inputs.artifact_name }}" | head -1)
+          fi
+          if [ ! -f "$FILE" ]; then
+            echo "::error::Artifact file not found: ${{ inputs.artifact_name }}"
+            ls -la artifact/
+            exit 1
+          fi
+          KEY="deployments/${{ inputs.lambda_function_name }}/${{ inputs.artifact_version }}/${{ inputs.artifact_name }}"
+          aws s3 cp "$FILE" "s3://${{ inputs.artifact_bucket_name }}/${KEY}"
+          if [ "${{ inputs.artifact_type }}" = "jar" ]; then
+            aws lambda update-function-code \
+              --function-name "${{ inputs.lambda_function_name }}" \
+              --s3-bucket "${{ inputs.artifact_bucket_name }}" \
+              --s3-key "${KEY}"
+          else
+            aws lambda update-function-code \
+              --function-name "${{ inputs.lambda_function_name }}" \
+              --zip-file "fileb://${FILE}"
+          fi
+          aws lambda wait function-updated --function-name "${{ inputs.lambda_function_name }}"
+          VERSION=$(aws lambda publish-version --function-name "${{ inputs.lambda_function_name }}" --query Version --output text)
+          aws lambda update-alias \
+            --function-name "${{ inputs.lambda_function_name }}" \
+            --name "${{ inputs.lambda_alias_name }}" \
+            --function-version "${VERSION}" 2>/dev/null || \
+          aws lambda create-alias \
+            --function-name "${{ inputs.lambda_function_name }}" \
+            --name "${{ inputs.lambda_alias_name }}" \
+            --function-version "${VERSION}"
+          echo "Deployed ${{ inputs.artifact_version }} as Lambda version ${VERSION}"

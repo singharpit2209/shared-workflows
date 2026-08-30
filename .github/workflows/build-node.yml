@@ -1,0 +1,72 @@
+name: Build Node Lambda
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: Path to Node app root
+        required: true
+        type: string
+      app_version:
+        required: false
+        type: string
+        default: "1.0.0"
+      node_version:
+        required: false
+        type: string
+        default: "20"
+    outputs:
+      artifact_version:
+        value: ${{ jobs.build.outputs.artifact_version }}
+      artifact_name:
+        value: ${{ jobs.build.outputs.artifact_name }}
+      artifact_type:
+        value: ${{ jobs.build.outputs.artifact_type }}
+      checksum:
+        value: ${{ jobs.build.outputs.checksum }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_version: ${{ steps.meta.outputs.artifact_version }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+      artifact_type: ${{ steps.meta.outputs.artifact_type }}
+      checksum: ${{ steps.meta.outputs.checksum }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@49933ea5289ca864684d0e784f2c0b7b25fa005 # v4.4.0
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install and test
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          npm install
+          npm test --if-present
+
+      - name: Build zip
+        id: meta
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          VERSION="${{ inputs.app_version }}-${SHORT_SHA}"
+          ARTIFACT="lambda-${VERSION}.zip"
+          zip -r "${ARTIFACT}" . -x "tests/*" "*.git*" "node_modules/.cache/*"
+          CHECKSUM=$(sha256sum "${ARTIFACT}" | awk '{print $1}')
+          echo "artifact_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "artifact_type=zip" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: node-lambda-${{ steps.meta.outputs.artifact_version }}
+          path: ${{ inputs.working_directory }}/${{ steps.meta.outputs.artifact_name }}

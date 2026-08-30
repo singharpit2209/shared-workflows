@@ -1,0 +1,27 @@
+name: Validate branch environment
+description: Block production deployments from non-main branches.
+
+inputs:
+  environment:
+    description: Target environment (dev, test, prod).
+    required: true
+  allowed_branch:
+    description: Branch allowed for this environment.
+    required: false
+    default: main
+
+runs:
+  using: composite
+  steps:
+    - name: Validate branch
+      shell: bash
+      run: |
+        set -euo pipefail
+        ENV="${{ inputs.environment }}"
+        BRANCH="${{ github.ref_name }}"
+        ALLOWED="${{ inputs.allowed_branch }}"
+        if [ "$ENV" = "prod" ] && [ "$BRANCH" != "$ALLOWED" ]; then
+          echo "::error::Production deploys must run from branch '$ALLOWED' (current: $BRANCH)"
+          exit 1
+        fi
+        echo "Branch $BRANCH is allowed for environment $ENV"

@@ -1,0 +1,110 @@
+name: Deploy ECS
+
+on:
+  workflow_call:
+    inputs:
+      artifact_version:
+        description: Immutable image tag (never latest)
+        required: true
+        type: string
+      ecr_repository:
+        description: ECR repository name
+        required: true
+        type: string
+      ecs_cluster:
+        description: ECS cluster name
+        required: true
+        type: string
+      ecs_service:
+        description: ECS service name
+        required: true
+        type: string
+      task_definition_family:
+        description: Task definition family
+        required: true
+        type: string
+      container_name:
+        description: Container name in task definition
+        required: true
+        type: string
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        type: string
+        default: Dockerfile
+      build_context:
+        description: Docker build context path
+        required: false
+        type: string
+        default: "."
+      container_port:
+        description: Container port
+        required: false
+        type: string
+        default: "8080"
+      environment:
+        required: false
+        type: string
+        default: "dev"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: ./actions/validate-branch-environment
+        with:
+          environment: ${{ inputs.environment }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          audience: sts.amazonaws.com
+          role-session-name: gha-deploy-ecs
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ inputs.artifact_version }}
+        run: |
+          set -euo pipefail
+          IMAGE="${ECR_REGISTRY}/${{ inputs.ecr_repository }}:${IMAGE_TAG}"
+          docker build -f "${{ inputs.dockerfile }}" -t "${IMAGE}" "${{ inputs.build_context }}"
+          docker push "${IMAGE}"
+          echo "IMAGE_URI=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Register task definition and update service
+        shell: bash
+        run: |
+          set -euo pipefail
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "${{ inputs.task_definition_family }}" \
+            --query taskDefinition)
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+            --arg IMAGE "$IMAGE_URI" \
+            --arg NAME "${{ inputs.container_name }}" \
+            'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+             | (.containerDefinitions[] | select(.name == $NAME) | .image) = $IMAGE')
+          echo "$NEW_TASK_DEF" > task-def.json
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json file://task-def.json --query taskDefinition.taskDefinitionArn --output text)
+          aws ecs update-service \
+            --cluster "${{ inputs.ecs_cluster }}" \
+            --service "${{ inputs.ecs_service }}" \
+            --task-definition "${NEW_ARN}" \
+            --force-new-deployment
+          aws ecs wait services-stable \
+            --cluster "${{ inputs.ecs_cluster }}" \
+            --services "${{ inputs.ecs_service }}"
+          echo "Deployed ${IMAGE_URI} as ${NEW_ARN}"

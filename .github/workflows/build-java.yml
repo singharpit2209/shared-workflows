@@ -1,0 +1,87 @@
+name: Build Java Lambda
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: Path to Maven project root
+        required: true
+        type: string
+      app_version:
+        required: false
+        type: string
+        default: "1.0.0"
+      java_version:
+        required: false
+        type: string
+        default: "21"
+      maven_modules:
+        description: Optional Maven -pl modules (comma-separated)
+        required: false
+        type: string
+        default: ""
+    outputs:
+      artifact_version:
+        value: ${{ jobs.build.outputs.artifact_version }}
+      artifact_name:
+        value: ${{ jobs.build.outputs.artifact_name }}
+      artifact_type:
+        value: ${{ jobs.build.outputs.artifact_type }}
+      checksum:
+        value: ${{ jobs.build.outputs.checksum }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_version: ${{ steps.meta.outputs.artifact_version }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+      artifact_type: ${{ steps.meta.outputs.artifact_type }}
+      checksum: ${{ steps.meta.outputs.checksum }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+          cache: maven
+
+      - name: Build and test
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          PL=""
+          if [ -n "${{ inputs.maven_modules }}" ]; then
+            PL="-pl ${{ inputs.maven_modules }} -am"
+          fi
+          mvn -B clean package $PL
+
+      - name: Collect jar
+        id: meta
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          VERSION="${{ inputs.app_version }}-${SHORT_SHA}"
+          JAR=$(find target -name "*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" ! -name "original-*.jar" | head -1)
+          if [ -z "$JAR" ]; then
+            echo "::error::No deployable JAR found under target/"
+            exit 1
+          fi
+          ARTIFACT="lambda-${VERSION}.jar"
+          cp "$JAR" "$ARTIFACT"
+          CHECKSUM=$(sha256sum "${ARTIFACT}" | awk '{print $1}')
+          echo "artifact_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "artifact_type=jar" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: java-lambda-${{ steps.meta.outputs.artifact_version }}
+          path: ${{ inputs.working_directory }}/${{ steps.meta.outputs.artifact_name }}

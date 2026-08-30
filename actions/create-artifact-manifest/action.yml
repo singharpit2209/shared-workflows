@@ -1,0 +1,40 @@
+name: Create artifact manifest
+description: Write deployment manifest JSON for traceability.
+
+inputs:
+  artifact_version:
+    description: Immutable artifact version.
+    required: true
+  artifact_name:
+    description: Artifact file name.
+    required: true
+  artifact_type:
+    description: zip or jar.
+    required: true
+  checksum:
+    description: SHA256 checksum of the artifact.
+    required: true
+  output_path:
+    description: Path to write manifest JSON.
+    required: false
+    default: artifact-manifest.json
+
+runs:
+  using: composite
+  steps:
+    - name: Write manifest
+      shell: bash
+      run: |
+        set -euo pipefail
+        cat > "${{ inputs.output_path }}" <<EOF
+        {
+          "repository": "${{ github.repository }}",
+          "commit": "${{ github.sha }}",
+          "artifact_version": "${{ inputs.artifact_version }}",
+          "artifact_name": "${{ inputs.artifact_name }}",
+          "artifact_type": "${{ inputs.artifact_type }}",
+          "checksum": "${{ inputs.checksum }}",
+          "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        }
+        EOF
+        cat "${{ inputs.output_path }}"

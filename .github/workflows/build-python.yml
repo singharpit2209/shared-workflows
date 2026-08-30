@@ -1,0 +1,91 @@
+name: Build Python Lambda
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: Path to Python app root (contains src/ or handler)
+        required: true
+        type: string
+      app_version:
+        description: Semantic app version prefix
+        required: false
+        type: string
+        default: "1.0.0"
+      python_version:
+        description: Python version for build
+        required: false
+        type: string
+        default: "3.12"
+    outputs:
+      artifact_version:
+        description: Immutable version tag
+        value: ${{ jobs.build.outputs.artifact_version }}
+      artifact_name:
+        description: Artifact file name
+        value: ${{ jobs.build.outputs.artifact_name }}
+      artifact_type:
+        description: Always zip for Python
+        value: ${{ jobs.build.outputs.artifact_type }}
+      checksum:
+        description: SHA256 checksum
+        value: ${{ jobs.build.outputs.checksum }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_version: ${{ steps.meta.outputs.artifact_version }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+      artifact_type: ${{ steps.meta.outputs.artifact_type }}
+      checksum: ${{ steps.meta.outputs.checksum }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-python@0b936a2a8957dfd9bacfe124f1c2c8a0c5df0dcd # v5.2.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies and test
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -d tests ]; then python -m pytest tests -q; fi
+
+      - name: Build zip
+        id: meta
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          VERSION="${{ inputs.app_version }}-${SHORT_SHA}"
+          ARTIFACT="lambda-${VERSION}.zip"
+          if [ -d src ]; then
+            cd src && zip -r "../${ARTIFACT}" . && cd ..
+          else
+            zip -r "${ARTIFACT}" . -x "tests/*" "*.pyc" "__pycache__/*"
+          fi
+          CHECKSUM=$(sha256sum "${ARTIFACT}" | awk '{print $1}')
+          echo "artifact_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "artifact_type=zip" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: python-lambda-${{ steps.meta.outputs.artifact_version }}
+          path: ${{ inputs.working_directory }}/${{ steps.meta.outputs.artifact_name }}
+          retention-days: 30
+
+      - uses: ./actions/create-artifact-manifest
+        with:
+          artifact_version: ${{ steps.meta.outputs.artifact_version }}
+          artifact_name: ${{ steps.meta.outputs.artifact_name }}
+          artifact_type: zip
+          checksum: ${{ steps.meta.outputs.checksum }}
