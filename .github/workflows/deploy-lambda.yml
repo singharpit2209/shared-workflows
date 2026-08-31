@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: singharpit2209/shared-workflows/actions/validate-branch-environment@v0.3.1
+      - uses: singharpit2209/shared-workflows/actions/validate-branch-environment@v0.3.2
         with:
           environment: ${{ inputs.environment }}
 
@@ -90,7 +90,7 @@ jobs:
             exit 1
           fi
 
-      - uses: singharpit2209/shared-workflows/actions/resolve-deployment-target@v0.3.1
+      - uses: singharpit2209/shared-workflows/actions/resolve-deployment-target@v0.3.2
         id: target
         with:
           project_name: ${{ inputs.project_name }}
@@ -98,6 +98,7 @@ jobs:
           component: ${{ inputs.component }}
           environment: ${{ inputs.environment }}
           lambda_alias_name: ${{ inputs.lambda_alias_name }}
+          aws_region: ${{ inputs.aws_region != '' && inputs.aws_region || vars.AWS_REGION || 'us-east-1' }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2

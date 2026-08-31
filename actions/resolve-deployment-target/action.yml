@@ -22,6 +22,10 @@ inputs:
     description: Lambda alias name
     required: false
     default: live
+  aws_region:
+    description: AWS region (passed from caller workflow; composite actions cannot read vars)
+    required: false
+    default: us-east-1
 
 outputs:
   aws_region:
@@ -66,7 +70,7 @@ runs:
         BUCKET="${PROJECT}-${APP}-${COMPONENT}-artifacts-${ENV}"
         API="${PROJECT}-${APP}-${COMPONENT}-api-${ENV}"
 
-        echo "aws_region=${{ vars.AWS_REGION || 'us-east-1' }}" >> "$GITHUB_OUTPUT"
+        echo "aws_region=${{ inputs.aws_region }}" >> "$GITHUB_OUTPUT"
         echo "project_name=${PROJECT}" >> "$GITHUB_OUTPUT"
         echo "lambda_function_name=${FN}" >> "$GITHUB_OUTPUT"
         echo "artifact_bucket_name=${BUCKET}" >> "$GITHUB_OUTPUT"
