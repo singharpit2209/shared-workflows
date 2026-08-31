@@ -2,10 +2,6 @@ name: Resolve deployment target
 description: Compute deploy target names from the platform naming contract (matches hello-world-iac locals.tf).
 
 inputs:
-  project_name:
-    description: Project prefix (default singharpit2209-iac)
-    required: false
-    default: singharpit2209-iac
   app_name:
     description: Application name (e.g. hello-world)
     required: false
@@ -31,9 +27,6 @@ outputs:
   aws_region:
     description: AWS region for deployment.
     value: ${{ steps.resolve.outputs.aws_region }}
-  project_name:
-    description: Project name prefix.
-    value: ${{ steps.resolve.outputs.project_name }}
   lambda_function_name:
     description: Computed Lambda function name.
     value: ${{ steps.resolve.outputs.lambda_function_name }}
@@ -55,7 +48,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        PROJECT="${{ inputs.project_name }}"
         APP="${{ inputs.app_name }}"
         COMPONENT="${{ inputs.component }}"
         ENV="${{ inputs.environment }}"
@@ -66,12 +58,11 @@ runs:
           exit 1
         fi
 
-        FN="${PROJECT}-${APP}-${COMPONENT}-${ENV}"
-        BUCKET="${PROJECT}-${APP}-${COMPONENT}-artifacts-${ENV}"
-        API="${PROJECT}-${APP}-${COMPONENT}-api-${ENV}"
+        FN="${APP}-${COMPONENT}-${ENV}"
+        BUCKET="${APP}-${COMPONENT}-artifacts-${ENV}"
+        API="${APP}-${COMPONENT}-api-${ENV}"
 
         echo "aws_region=${{ inputs.aws_region }}" >> "$GITHUB_OUTPUT"
-        echo "project_name=${PROJECT}" >> "$GITHUB_OUTPUT"
         echo "lambda_function_name=${FN}" >> "$GITHUB_OUTPUT"
         echo "artifact_bucket_name=${BUCKET}" >> "$GITHUB_OUTPUT"
         echo "api_name=${API}" >> "$GITHUB_OUTPUT"

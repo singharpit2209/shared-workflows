@@ -12,7 +12,7 @@ No AWS credentials are stored here. Callers pass an OIDC IAM role ARN from Layer
 | Composite apply action | [`actions/terraform-apply/`](actions/terraform-apply/) | download artifact, apply saved plan |
 | Legacy reusable workflows | [`.github/workflows/terraform.yml`](.github/workflows/terraform.yml) | Deprecated — OIDC must run in caller repo |
 
-### Application CI/CD (v0.3.0+)
+### Application CI/CD (v0.4.0+)
 
 | Workflow / action | Purpose |
 |---|---|
@@ -23,7 +23,7 @@ No AWS credentials are stored here. Callers pass an OIDC IAM role ARN from Layer
 | [`deploy-lambda.yml`](.github/workflows/deploy-lambda.yml) | Resolve targets + versioned artifact → Lambda `live` alias |
 | [`deploy-ecs.yml`](.github/workflows/deploy-ecs.yml) | Docker → ECR → ECS service update |
 
-Call from [`hello-world`](../hello-world/) app repo. Pin `@v0.3.0` for deploy-lambda (naming contract).
+Call from [`hello-world`](../hello-world/) app repo. Pin `@v0.4.0` for deploy-lambda (naming contract without platform prefix).
 
 **Important:** Configure AWS OIDC credentials in the **caller repository workflow**, not inside a reusable workflow. IAM trust policies allow `singharpit2209/roles-iac`, not `shared-workflows`.
 

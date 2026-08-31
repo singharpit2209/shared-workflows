@@ -29,11 +29,6 @@ on:
         required: false
         type: string
         default: ""
-      project_name:
-        description: Project prefix for naming contract
-        required: false
-        type: string
-        default: singharpit2209-iac
       lambda_function_name:
         description: Optional override — computed from naming contract when empty
         required: false
@@ -76,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: singharpit2209/shared-workflows/actions/validate-branch-environment@v0.3.2
+      - uses: singharpit2209/shared-workflows/actions/validate-branch-environment@v0.4.0
         with:
           environment: ${{ inputs.environment }}
 
@@ -90,10 +85,9 @@ jobs:
             exit 1
           fi
 
-      - uses: singharpit2209/shared-workflows/actions/resolve-deployment-target@v0.3.2
+      - uses: singharpit2209/shared-workflows/actions/resolve-deployment-target@v0.4.0
         id: target
         with:
-          project_name: ${{ inputs.project_name }}
           app_name: ${{ inputs.app_name }}
           component: ${{ inputs.component }}
           environment: ${{ inputs.environment }}
