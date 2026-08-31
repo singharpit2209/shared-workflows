@@ -1,16 +1,47 @@
 name: Resolve deployment target
-description: Resolve AWS account, region, and deployment metadata from repository variables.
+description: Compute deploy target names from the platform naming contract (matches hello-world-iac locals.tf).
+
+inputs:
+  project_name:
+    description: Project prefix (default singharpit2209-iac)
+    required: false
+    default: singharpit2209-iac
+  app_name:
+    description: Application name (e.g. hello-world)
+    required: false
+    default: ""
+  component:
+    description: Component key (e.g. python, node, java)
+    required: false
+    default: ""
+  environment:
+    description: Environment (dev, test, prod)
+    required: false
+    default: dev
+  lambda_alias_name:
+    description: Lambda alias name
+    required: false
+    default: live
 
 outputs:
   aws_region:
     description: AWS region for deployment.
     value: ${{ steps.resolve.outputs.aws_region }}
-  aws_account_id:
-    description: AWS account ID when configured.
-    value: ${{ steps.resolve.outputs.aws_account_id }}
   project_name:
-    description: Project name prefix for resources.
+    description: Project name prefix.
     value: ${{ steps.resolve.outputs.project_name }}
+  lambda_function_name:
+    description: Computed Lambda function name.
+    value: ${{ steps.resolve.outputs.lambda_function_name }}
+  artifact_bucket_name:
+    description: Computed artifact S3 bucket name.
+    value: ${{ steps.resolve.outputs.artifact_bucket_name }}
+  api_name:
+    description: Computed API Gateway name.
+    value: ${{ steps.resolve.outputs.api_name }}
+  lambda_alias_name:
+    description: Lambda alias for CD.
+    value: ${{ steps.resolve.outputs.lambda_alias_name }}
 
 runs:
   using: composite
@@ -20,6 +51,27 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        PROJECT="${{ inputs.project_name }}"
+        APP="${{ inputs.app_name }}"
+        COMPONENT="${{ inputs.component }}"
+        ENV="${{ inputs.environment }}"
+        ALIAS="${{ inputs.lambda_alias_name }}"
+
+        if [ -z "$APP" ] || [ -z "$COMPONENT" ]; then
+          echo "::error::app_name and component are required for naming resolution"
+          exit 1
+        fi
+
+        FN="${PROJECT}-${APP}-${COMPONENT}-${ENV}"
+        BUCKET="${PROJECT}-${APP}-${COMPONENT}-artifacts-${ENV}"
+        API="${PROJECT}-${APP}-${COMPONENT}-api-${ENV}"
+
         echo "aws_region=${{ vars.AWS_REGION || 'us-east-1' }}" >> "$GITHUB_OUTPUT"
-        echo "aws_account_id=${{ vars.AWS_ACCOUNT_ID || '' }}" >> "$GITHUB_OUTPUT"
-        echo "project_name=${{ vars.PROJECT_NAME || 'singharpit2209-iac' }}" >> "$GITHUB_OUTPUT"
+        echo "project_name=${PROJECT}" >> "$GITHUB_OUTPUT"
+        echo "lambda_function_name=${FN}" >> "$GITHUB_OUTPUT"
+        echo "artifact_bucket_name=${BUCKET}" >> "$GITHUB_OUTPUT"
+        echo "api_name=${API}" >> "$GITHUB_OUTPUT"
+        echo "lambda_alias_name=${ALIAS}" >> "$GITHUB_OUTPUT"
+
+        echo "Resolved Lambda: ${FN}"
+        echo "Resolved bucket: ${BUCKET}"

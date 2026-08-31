@@ -19,14 +19,31 @@ on:
         description: GitHub Actions artifact name from build workflow
         required: true
         type: string
+      app_name:
+        description: Application name for naming contract (e.g. hello-world)
+        required: false
+        type: string
+        default: ""
+      component:
+        description: Component key for naming contract (e.g. python)
+        required: false
+        type: string
+        default: ""
+      project_name:
+        description: Project prefix for naming contract
+        required: false
+        type: string
+        default: singharpit2209-iac
       lambda_function_name:
-        description: Target Lambda function name
-        required: true
+        description: Optional override — computed from naming contract when empty
+        required: false
         type: string
+        default: ""
       artifact_bucket_name:
-        description: S3 bucket for versioned deployment artifacts
-        required: true
+        description: Optional override — computed from naming contract when empty
+        required: false
         type: string
+        default: ""
       lambda_alias_name:
         description: Alias to update after publish
         required: false
@@ -38,7 +55,7 @@ on:
         type: string
         default: "dev"
       aws_role_arn:
-        description: IAM role ARN for OIDC (caller should pass vars.AWS_ROLE_ARN)
+        description: IAM role ARN for OIDC (defaults to vars.AWS_ROLE_ARN)
         required: false
         type: string
         default: ""
@@ -59,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: singharpit2209/shared-workflows/actions/validate-branch-environment@v0.2.3
+      - uses: ./actions/validate-branch-environment
         with:
           environment: ${{ inputs.environment }}
 
@@ -69,12 +86,18 @@ jobs:
           set -euo pipefail
           ROLE_ARN="${{ inputs.aws_role_arn != '' && inputs.aws_role_arn || vars.AWS_ROLE_ARN }}"
           if [ -z "$ROLE_ARN" ]; then
-            echo "::error::AWS role ARN is not set."
-            echo "On the caller repo (hello-world), add Actions variable AWS_ROLE_ARN = app-cd-deployer role ARN"
-            echo "Or pass aws_role_arn input to deploy-lambda.yml"
+            echo "::error::AWS role ARN is not set. Add AWS_ROLE_ARN variable (app-cd-deployer)."
             exit 1
           fi
-          echo "Using role: $ROLE_ARN"
+
+      - uses: ./actions/resolve-deployment-target
+        id: target
+        with:
+          project_name: ${{ inputs.project_name }}
+          app_name: ${{ inputs.app_name }}
+          component: ${{ inputs.component }}
+          environment: ${{ inputs.environment }}
+          lambda_alias_name: ${{ inputs.lambda_alias_name }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
@@ -92,6 +115,10 @@ jobs:
 
       - name: Upload to S3 and update Lambda
         shell: bash
+        env:
+          FN: ${{ inputs.lambda_function_name != '' && inputs.lambda_function_name || steps.target.outputs.lambda_function_name }}
+          BUCKET: ${{ inputs.artifact_bucket_name != '' && inputs.artifact_bucket_name || steps.target.outputs.artifact_bucket_name }}
+          ALIAS: ${{ inputs.lambda_alias_name != '' && inputs.lambda_alias_name || steps.target.outputs.lambda_alias_name }}
         run: |
           set -euo pipefail
           FILE="artifact/${{ inputs.artifact_name }}"
@@ -103,26 +130,26 @@ jobs:
             ls -la artifact/
             exit 1
           fi
-          KEY="deployments/${{ inputs.lambda_function_name }}/${{ inputs.artifact_version }}/${{ inputs.artifact_name }}"
-          aws s3 cp "$FILE" "s3://${{ inputs.artifact_bucket_name }}/${KEY}"
+          KEY="deployments/${FN}/${{ inputs.artifact_version }}/${{ inputs.artifact_name }}"
+          aws s3 cp "$FILE" "s3://${BUCKET}/${KEY}"
           if [ "${{ inputs.artifact_type }}" = "jar" ]; then
             aws lambda update-function-code \
-              --function-name "${{ inputs.lambda_function_name }}" \
-              --s3-bucket "${{ inputs.artifact_bucket_name }}" \
+              --function-name "${FN}" \
+              --s3-bucket "${BUCKET}" \
               --s3-key "${KEY}"
           else
             aws lambda update-function-code \
-              --function-name "${{ inputs.lambda_function_name }}" \
+              --function-name "${FN}" \
               --zip-file "fileb://${FILE}"
           fi
-          aws lambda wait function-updated --function-name "${{ inputs.lambda_function_name }}"
-          VERSION=$(aws lambda publish-version --function-name "${{ inputs.lambda_function_name }}" --query Version --output text)
+          aws lambda wait function-updated --function-name "${FN}"
+          VERSION=$(aws lambda publish-version --function-name "${FN}" --query Version --output text)
           aws lambda update-alias \
-            --function-name "${{ inputs.lambda_function_name }}" \
-            --name "${{ inputs.lambda_alias_name }}" \
+            --function-name "${FN}" \
+            --name "${ALIAS}" \
             --function-version "${VERSION}" 2>/dev/null || \
           aws lambda create-alias \
-            --function-name "${{ inputs.lambda_function_name }}" \
-            --name "${{ inputs.lambda_alias_name }}" \
+            --function-name "${FN}" \
+            --name "${ALIAS}" \
             --function-version "${VERSION}"
-          echo "Deployed ${{ inputs.artifact_version }} as Lambda version ${VERSION}"
+          echo "Deployed ${{ inputs.artifact_version }} to ${FN} as version ${VERSION}"
